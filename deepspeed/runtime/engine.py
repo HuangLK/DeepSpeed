@@ -2609,11 +2609,14 @@ class DeepSpeedEngine(Module):
                                                          load_module_only=load_module_only,
                                                          custom_load_fn=custom_load_fn)
 
-        load_zero_checkpoint = load_optimizer_states and (self.zero_optimization() or self.bfloat16_enabled())
+        load_zero_checkpoint = self.zero_optimization() or self.bfloat16_enabled()
         if load_zero_checkpoint and load_path is not None:
-            success = self._load_zero_checkpoint(load_dir, tag, load_optimizer_states=load_optimizer_states)
-            if not success:
+            if not load_optimizer_states:
                 self.optimizer._restore_from_bit16_weights()
+            else:
+                success = self._load_zero_checkpoint(load_dir, tag, load_optimizer_states=load_optimizer_states)
+                if not success:
+                    self.optimizer._restore_from_bit16_weights()
 
         if self.zero_optimization_partition_weights():
             self.optimizer.checkpoint_event_epilogue()
@@ -3165,7 +3168,7 @@ class DeepSpeedEngine(Module):
         # if we don't use it, we get parameters ordered incorrectly
         if hasattr(self.optimizer, "round_robin_bit16_groups"):
             bit16_groups = self.optimizer.round_robin_bit16_groups
-        elif self.bfloat16_enabled() and not self.zero_optimization():
+        elif self.bfloat16_enabled() and self.zero_optimization_stage() < 2:
             bit16_groups = self.optimizer.bf16_groups
         else:
             bit16_groups = self.optimizer.bit16_groups if self.zero_optimization_stage(
